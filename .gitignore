@@ -1,0 +1,19 @@
+# Ignore runtime output
+.output/
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# MacOS
+.DS_Store
+
+# Logs
+*.log
+
+# Editor dirs
+.vscode/
+.idea/
