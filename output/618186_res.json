@@ -1,5 +1,5 @@
 {
-    "input_path": "images/ccf2w.png",
+    "input_path": "images/618186.png",
     "page_index": null,
     "model_settings": {
         "use_doc_preprocessor": false,
@@ -9,13 +9,13 @@
     },
     "parsing_res_list": [
         {
-            "block_label": "text",
-            "block_content": "SCF2W",
+            "block_label": "paragraph_title",
+            "block_content": "618186",
             "block_bbox": [
-                16,
-                7,
-                183,
-                49
+                8,
+                3,
+                96,
+                31
             ],
             "block_id": 0,
             "block_order": 1
@@ -26,14 +26,14 @@
         "page_index": null,
         "boxes": [
             {
-                "cls_id": 22,
-                "label": "text",
-                "score": 0.46497321128845215,
+                "cls_id": 17,
+                "label": "paragraph_title",
+                "score": 0.8504900336265564,
                 "coordinate": [
-                    16.935516357421875,
-                    7.532026290893555,
-                    183.1674346923828,
-                    49.57941436767578
+                    8.100822448730469,
+                    3.188547134399414,
+                    96.12574768066406,
+                    31.335477828979492
                 ]
             }
         ]
