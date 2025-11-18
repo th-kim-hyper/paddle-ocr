@@ -1,102 +1,98 @@
+import json
 from pathlib import Path
-from paddleocr import PaddleOCR
 from PIL import Image, ImageDraw, ImageFont
-import numpy as np
-import fitz
+from paddleocr import PaddleOCR
 
-def get_ocr_instance(lang: str = "korean", ocr_version: str = "PP-OCRv5", device: str = "gpu"):
-    return PaddleOCR(
-        lang=lang,
-        ocr_version=ocr_version,
-        device=device,
+def draw_boxes_from_json(image_path: str, json_path: str, output_path: str):
+    """
+    JSON 결과 파일에서 rec_boxes 정보를 읽어 원본 이미지에 박스를 그립니다.
+    
+    Args:
+        image_path: 원본 이미지 경로
+        json_path: PaddleOCR 결과 JSON 파일 경로
+        output_path: 저장할 시각화 이미지 경로
+    """
+    # JSON 읽기
+    with open(json_path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    
+    rec_boxes = data.get('rec_boxes', [])
+    rec_texts = data.get('rec_texts', [])
+    rec_scores = data.get('rec_scores', [])
+    
+    # 이미지 열기
+    img = Image.open(image_path).convert('RGB')
+    draw = ImageDraw.Draw(img)
+    
+    # 폰트 설정 (기본 폰트 사용)
+    try:
+        font = ImageFont.truetype("arial.ttf", 14)
+    except:
+        font = ImageFont.load_default()
+    
+    # 박스 그리기
+    for idx, box in enumerate(rec_boxes):
+        xmin, ymin, xmax, ymax = box
+        
+        # 사각형 그리기 (초록색, 두께 2)
+        draw.rectangle([xmin, ymin, xmax, ymax], outline=(0, 255, 0), width=2)
+        
+        # 점수 표시 (소수점 3자리)
+        if idx < len(rec_scores):
+            score = rec_scores[idx]
+            label = f"{score:.3f}"
+            
+            # 텍스트 크기 계산
+            text_bbox = draw.textbbox((0, 0), label, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+            
+            # 타이틀 박스 위치 (박스 상단)
+            title_x = xmin
+            title_y = max(0, ymin - text_height - 8)  # 상단 여백 포함
+            title_box = [
+                title_x,
+                title_y,
+                title_x + text_width + 8,
+                title_y + text_height + 4
+            ]
+            
+            # 타이틀 박스 배경 (흰색)
+            draw.rectangle(title_box, fill=(255, 255, 255), outline=(0, 255, 0), width=1)
+            
+            # 점수 텍스트 (빨간색)
+            draw.text((title_x + 4, title_y + 2), label, fill=(255, 0, 0), font=font)
+    
+    # 저장
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    img.save(output_path)
+    print(f"✓ 시각화 이미지 저장: {output_path}")
+
+if __name__ == "__main__":
+    image_path = "images/3bnyf.png"
+
+    # PaddleOCR 인스턴스 초기화
+    ocr = PaddleOCR(
         use_doc_orientation_classify=False,
         use_doc_unwarping=False,
-        use_textline_orientation=False,
-    )
+        use_textline_orientation=False)
 
-def pdf_to_images(pdf_path: str, out_dir: Path, dpi: int = 200):
-    """Render PDF pages to PNG images saved under out_dir/converted_images.
+    # 샘플 이미지에 대해 OCR 추론 실행
+    result = ocr.predict(
+        input=image_path)
 
-    Returns a list of file paths to the rendered images.
-    """
-    conv_dir = out_dir / "converted_images"
-    conv_dir.mkdir(parents=True, exist_ok=True)
-    doc = fitz.open(pdf_path)
-    img_paths = []
-    zoom = dpi / 72.0
-    mat = fitz.Matrix(zoom, zoom)
-    for i, page in enumerate(doc):
-        pix = page.get_pixmap(matrix=mat, alpha=False)
-        p = conv_dir / f"page_{i:03d}.png"
-        pix.save(str(p))
-        img_paths.append(str(p))
-    doc.close()
-    return img_paths
+    # 결과 시각화 및 JSON 결과 저장
+    for res in result:
+        res.print()
+        res.save_to_img("output")
+        res.save_to_json("output")
+    
+    # JSON 결과를 사용해 커스텀 시각화 생성
+    json_path = "output/3bnyf_res.json"
+    vis_output = "output/3bnyf_vis.jpg"
+    
+    if Path(json_path).exists():
+        draw_boxes_from_json(image_path, json_path, vis_output)
+    else:
+        print(f"⚠️ JSON 파일을 찾을 수 없습니다: {json_path}")
 
-def get_korean_font(size: int):
-    # prefer bundled NanumGothic.ttf in fonts/; fallback to default PIL font
-    font_paths = [Path("./fonts/NanumGothic.ttf"), Path("./fonts/NanumGothic-Regular.ttf")]
-    for p in font_paths:
-        if p.exists():
-            try:
-                return ImageFont.truetype(str(p), size=size)
-            except Exception:
-                continue
-    return ImageFont.load_default()
-
-def draw_korean_visualization(image_path: str, ocr_result: dict, out_path: str, font=None):
-    # use RGBA overlay so we can draw semi-transparent backgrounds
-    base = Image.open(image_path).convert("RGBA")
-    overlay = Image.new("RGBA", base.size, (255, 255, 255, 0))
-    draw = ImageDraw.Draw(overlay)
-    w, h = base.size
-    # dynamic font size if not provided
-    if font is None:
-        font = get_korean_font(max(16, w // 80))
-
-    rec_polys = ocr_result.get("rec_polys", [])
-    rec_texts = ocr_result.get("rec_texts", [])
-
-    def _get_text_size(draw_obj, txt, fnt):
-        # Try modern textbbox, then fallback to textsize or font.getsize
-        try:
-            bbox = draw_obj.textbbox((0, 0), txt, font=fnt)
-            return (bbox[2] - bbox[0], bbox[3] - bbox[1])
-        except Exception:
-            try:
-                return draw_obj.textsize(txt, font=fnt)
-            except Exception:
-                try:
-                    return fnt.getsize(txt)
-                except Exception:
-                    return (max(8, len(txt) * 6), 12)
-
-    for poly, text in zip(rec_polys, rec_texts):
-        try:
-            pts = np.array(poly).reshape(-1, 2)
-            # draw polygon border on overlay (opaque)
-            draw.line([tuple(p) for p in pts] + [tuple(pts[0])], fill=(0, 255, 0, 255), width=2)
-            # determine text position (top-left of polygon)
-            tx = int(pts[:, 0].min())
-            ty = int(pts[:, 1].min()) - 4
-            if ty < 0:
-                ty = int(pts[:, 1].max()) + 4
-            # draw semi-transparent background rectangle for readability
-            text_size = _get_text_size(draw, text, font)
-            rect = [tx, ty, tx + text_size[0] + 4, ty + text_size[1] + 4]
-            # semi-transparent black (alpha=180)
-            draw.rectangle(rect, fill=(0, 0, 0, 180))
-            # draw text opaque white
-            draw.text((tx + 2, ty + 2), text, font=font, fill=(255, 255, 255, 255))
-        except Exception:
-            continue
-
-    # composite overlay onto base and save as RGB
-    try:
-        combined = Image.alpha_composite(base, overlay).convert("RGB")
-        out_p = Path(out_path)
-        out_p.parent.mkdir(parents=True, exist_ok=True)
-        combined.save(str(out_p))
-    except Exception:
-        # fallback: try saving overlay-composited image directly
-        Image.alpha_composite(base, overlay).convert("RGB").save(out_path)
